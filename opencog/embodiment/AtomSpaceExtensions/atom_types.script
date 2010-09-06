@@ -1,0 +1,12 @@
+// =====================================================================
+// EMBODIMENT-RELATED ATOMS: 
+// TODO: move all related definitions from 
+// opencog/atomspace/atom_types.script to here when the atom types 
+// initialization issue is definitely solved.
+// =====================================================================
+
+WR_LINK <- ASSOCIATIVE_LINK "WRLink"
+FREQUENCY_LINK <- INHERITANCE_LINK
+
+FEELING_NODE <- GROUNDED_PREDICATE_NODE
+PHRASE_NODE <- NODE

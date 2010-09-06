@@ -1,0 +1,8 @@
+/* File automatically generated. Do not edit */
+#include <opencog/atomspace/ClassServer.h>
+#include <opencog/atomspace/atom_types.h>
+#include <opencog/atomspace/types.h>
+#include "atom_types.h"
+opencog::Type opencog::FOO_NODE;
+opencog::Type opencog::BAR_NODE;
+opencog::Type opencog::FOOBAR_LINK;

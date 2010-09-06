@@ -1,0 +1,43 @@
+CMAKE_POLICY(SET CMP0005 OLD)
+ADD_DEFINITIONS (-DPVP_XML_FILE_PATH=\\"${CMAKE_CURRENT_SOURCE_DIR}\\")
+
+IF (HAVE_GUILE)
+	ADD_CXXTEST(PAIUTest)
+	TARGET_LINK_LIBRARIES(PAIUTest PAI behavior)
+	IF(WIN32)
+		TARGET_LINK_LIBRARIES(PAIUTest winmm)
+	ENDIF(WIN32)
+ENDIF (HAVE_GUILE)
+	
+ADD_EXECUTABLE(processPVPMessage ProcessPVPMessage.cc)
+TARGET_LINK_LIBRARIES(processPVPMessage 
+	PredicateUpdaters 
+	PAI
+	behavior
+	${PROJECT_LIBRARIES}
+)
+
+ADD_CXXTEST(ActionPlanUTest)
+TARGET_LINK_LIBRARIES(ActionPlanUTest util comboreduct PAI)
+IF(WIN32)
+    TARGET_LINK_LIBRARIES(ActionPlanTest winmm)
+ENDIF(WIN32)
+
+ADD_CXXTEST(ActionTypeUTest)
+TARGET_LINK_LIBRARIES(ActionTypeUTest util comboreduct PAI)
+IF(WIN32)
+    TARGET_LINK_LIBRARIES(ActionTypeTest winmm)
+ENDIF(WIN32)
+
+ADD_CXXTEST(ActionParamTypeUTest)
+TARGET_LINK_LIBRARIES(ActionParamTypeUTest util comboreduct PAI)
+IF(WIN32)
+    TARGET_LINK_LIBRARIES(ActionParamTypeTest winmm)
+ENDIF(WIN32)
+
+ADD_CXXTEST(PetActionUTest)
+TARGET_LINK_LIBRARIES(PetActionUTest util comboreduct PAI)
+IF(WIN32)
+    TARGET_LINK_LIBRARIES(PetActionUTest winmm)
+ENDIF(WIN32)
+

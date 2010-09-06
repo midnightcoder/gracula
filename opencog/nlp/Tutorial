@@ -1,0 +1,362 @@
+
+                             OpenCog NLP Tutorial
+                             --------------------
+                                 May 2009
+                     Linas Vepstas <linasvepstas@gmail.com>
+
+
+OpenCog NLP tutorial, provides short overview of important NLP components.
+Concludes with some open research questions.
+
+
+Outline
+=======
+
+-- Link Grammar
+-- RelEx
+-- OpenCog representation
+-- "La Cogita" chatbot
+-- Pattern matching
+-- Semantic normalization (triples)
+-- Common Sense Reasoning
+
+
+Link Grammar is a parser
+========================
+http://www.abisource.com/projects/link-grammar/
+
+   linkparser> John threw the ball
+   Found 1 linkage (1 had no P.P. violations)
+	   Unique linkage, cost vector = (CORP=6.0467 UNUSED=0 DIS=0 AND=0 LEN=5)
+   
+             +-----Os----+
+      +--Ss--+     +--Ds-+
+      |      |     |     |
+   John.m threw.v the ball.n 
+
+-- Links are Ss,Os,Ds
+-- Ss == Subject, singular
+-- Os == Object, singular
+-- Ds == Determiner, singular
+
+-- There are about 100 link types, and many more subtypes.
+-- Links are bidirectional; no head-word.
+-- Words have "disjuncts" which fit like puzzle pieces:
+   e.g. threw: S- & O+  means that verb "threw" must have
+   subject on left, object on right.
+-- Parser arranges puzzle pieces until all fit together.
+-- Disjuncts form context-free grammar.
+
+
+RelEx is a dependency relation extractor
+======================================== 
+http://opencog.org/wiki/RelEx
+
+-- Uses link-grammar input to obtain relations:
+   _subj (<<throw>>, <<John>>) 
+   _obj (<<throw>>, <<ball>>)
+
+-- First word of the relation is the "head word",
+   the second word is the "dependent" word:
+   e.g. "John threw the red ball"
+
+    _amod (<<ball>>, <<red>>)
+
+-- Also performs feature tagging:
+   Features are part-of-speech, tense, noun-number, etc.
+
+   pos (ball, noun)
+   noun_number (ball, singular)
+   DEFINITE-FLAG (ball, T)
+   pos (throw, verb)
+   tense (throw, past)
+   person-FLAG (John, T)
+
+-- RelEx "extracts" information from the parse-graph by means of 
+   "pattern matching" on subgraphs:
+
+   e.g. "if link-type is Ss then word on left is singular"
+   e.g. "if link-type is Os then word on right is singular"
+   e.g. "if link-type is Ss then word on right is verb"
+   e.g. "if link-type is Os then word on right is noun"
+
+   A sequence of "rules" are applied:
+
+   "if (predicate) then implication"
+   where "predicate" is a graph pattern to be matched,
+   and "implication" is a set of nodes/edges to be added, deleted.
+
+   Result of applying pattern-match rules results in a transformation 
+   of the graph.
+
+-- Pattern matching (and all of RelEx) implemented in Java.
+-- Pattern matching fairly closely tied to linguistics
+-- Pattern matching is on graphs, not hypergraphs.
+
+-- RelEx has other assorted other functions too ... 
+   (framenet, pronoun resolution, entity identification, ...)
+
+
+Parsed sentences as OpenCog hypergraphs
+=======================================
+-- Can be output directly from RelEx
+-- Can be quickly generated from a "compact parse format":
+   Allows parsed texts to be saved, input to opencog later.
+
+-- Word instances are a special case of a word:
+   (ReferenceLink (stv 1.0 1.0)
+      (WordInstanceNode "John@df4398c5-7f03-45c9-bb30-85f715ba83c0")
+      (WordNode "John")
+   )
+
+-- Word instances belong to a parse:
+   (WordInstanceLink (stv 1.0 1.0)
+      (WordInstanceNode "John@df4398c5-7f03-45c9-bb30-85f715ba83c0")
+      (ParseNode "sentence@235033cb-a934-4a57-8b0f-0307705ed931_parse_0")
+   )
+
+-- Parses belong to a sentence; sentences belong to a document, etc.
+-- Link Grammar links:
+
+   (EvaluationLink (stv 1.0 1.0)
+      (LinkGrammarRelationshipNode "Os")
+      (ListLink
+         (WordInstanceNode "threw@e69139f2-6322-4836-9d8c-73ce8d1cf881")
+         (WordInstanceNode "ball@f6aa0e0a-fc4b-40f6-b5b9-2b441393bda5")
+      )
+   )
+
+-- Relex Relations:
+   ; _obj (<<throw>>, <<ball>>) 
+   (EvaluationLink (stv 1.0 1.0)
+      (DefinedLinguisticRelationshipNode "_obj")
+      (ListLink
+         (WordInstanceNode "threw@e69139f2-6322-4836-9d8c-73ce8d1cf881")
+         (WordInstanceNode "ball@f6aa0e0a-fc4b-40f6-b5b9-2b441393bda5")
+      )
+   )
+
+-- Word features:
+   ; tense (throw, past)
+   (InheritanceLink (stv 1.0 1.0)
+      (WordInstanceNode "threw@e69139f2-6322-4836-9d8c-73ce8d1cf881")
+      (DefinedLinguisticConceptNode "past")
+   )
+
+-- Clearly very verbose; lots of information about the input sentences.
+
+
+"La Cogita" Chatbot
+===================
+bzr: opencog/nlp/chatbot/README
+
+-- A quick-n-dirty hookup of IRC to link-grammar/relex to OpenCog
+-- "remembers" what it was told.
+-- It was "told" about 5K simple assertions from the MIT ConceptNet
+   project: e.g. "Baseball is a sport".
+-- Can answer simple questions about what it was told, using hypergraph
+   pattern matching. 
+-- Single-word replies, since NL generation not hooked up yet.
+
+-- NO REASONING, INFERENCE WHATSOEVER. Chatbot is as dumb as a rock!
+
+
+Pattern matching
+================
+bzr: opencog/query/README
+
+-- Similar in idea to RelEx pattern matching, but this time its
+   1) fully general, 2) implemented within OpenCog.
+
+-- Given a hypergraph, containing VariableNodes, find a matching 
+   hypegraph which "solves" or "grounds" the variables.
+
+-- Example: "Who threw a ball?"
+    _subj (<<throw>>, <<_$qVar>>)
+    _obj (<<throw>>, <<ball>>) 
+
+   is easily grounded by:
+   _subj (<<throw>>, <<John>>) 
+   _obj (<<throw>>, <<ball>>)
+
+   Answer to question: John.
+
+-- Example: "What did John throw?"
+
+    _subj (<<throw>>, <<John>>) 
+    _obj (<<throw>>, <<_$qVar>>) 
+
+    Answer to question: ball
+
+-- Pattern matcher is "completely general", works for any hypergraph,
+   not just NLP.
+
+-- Works vaguely like push-down automaton, maintains stack of partial
+   matches/groundings.  
+
+-- Final accept/reject of a potential match is determined by user
+   callback, and is thus configurable.  
+
+-- Solutions/groundings are reported via callback, too, so search can be
+   run to exhaustion, or terminated early.
+
+-- Can test for "optional" clauses, and/or absence of clauses (to reject
+   matches that also contain certain subgraphs).
+
+-- Currently used primarily for performing implications "IF P THEN Q"
+   i.e. if a match to pattern P is found, then create pattern Q. Both
+   P and Q contain variables.
+
+
+Semantic normalization aka Semantic Triples
+===========================================
+-- "triples" are very fashionable:
+   "Semantic Web", OWL, RDF, N3, SPARQL, ISO Topic Maps, 
+   Semantic Nets, Upper Ontology, etc.
+
+-- Although a triple can be "any" list of three items
+   e.g. (_obj, throw, ball)
+
+   A "semantic triple" captures a "semantic" relation:
+
+   e.g. capital_of(Spain, Madrid)
+
+-- Often prepositional in nature ("kind_of", "inside_of", "next_to"...)
+   but can copular: "is-a", "has-a"
+
+-- Can provide (partial) solution to normalization problem:
+   e.g. "The capital of Spain is Madrid"
+
+   _subj (<<be>>, <<capital>>)
+   _obj (<<be>>, <<Madrid>>)
+   of (<<capital>>, <<Spain>>)
+
+   FAILS to pattern match the question: "What is the capital of Spain?":
+
+   _subj (<<be>>, <<_$qVar>>)
+   _obj (<<be>>, <<capital>>)
+   of (<<capital>>, <<Spain>>)
+   COPULA-QUESTION-FLAG (capital, T)
+   QUERY-TYPE (_$qVar, what)
+
+   because subject, object are reversed. 
+   The semantic triple provides a (partial) solution for this.
+   
+-- Implemented by means of pattern matching: e.g.
+
+   ; Sentence: "The capital of Germany is Berlin"
+   ; var0=capital, var1=Berlin var2=Germany
+   # IF %ListLink("# APPLY TRIPLE RULES", $sent)
+         ^ %WordInstanceLink($var0,$sent)  ; $var0 and $var1 must be
+         ^ %WordInstanceLink($var1,$sent)  ; in the same sentence
+         ^ _subj(be,$var0) ^ _obj(be,$var1)   ; reversed subj, obj
+         ^ $prep($var0,$var2)              ; preposition
+         ^ %LemmaLink($var0,$word0)        ; word of word instance
+         ^ $phrase($word0, $prep)          ; convert to phrase
+         THEN ^3_$phrase($var2, $var1)
+
+   Above is actual rule: it is converted to an OpenCog 
+   ImplicationLink (quite verbose!) and run through pattern matcher.
+
+-- Noteworthy: Makes use of "processing anchors" i.e.
+   the sentence $sent MUST be connected, via ListLink to 
+
+       AnchorNode "# APPLY TRIPLE RULES"
+
+   i.e. this rule does *not* apply to all sentences ever read, but only
+   those sentences that are attached to this AnchorNode.
+   After processing, the anchor is released.
+
+Semes, Reference Resolution
+===========================
+-- Consider two sentences: "John threw a ball" and "What did John throw?"
+   How can we know that the "John" in the first sentence is the same 
+   thing as the "John" in the second sentence?
+
+-- Answer: create "semes", which behave like words, but represent a 
+   single concept across multiple sentences. Thus, "John" is a seme.
+
+-- Semes are "decorated" by modifiers in the same way that words are 
+   decorated by modifiers. For example: "green ball" -- green is a 
+   "decoration" on "ball".
+
+-- Words can be "promoted" to semes using many different algorithms. 
+   One of the simplest is to compare decorations. Thus, "green ball"
+   and "red ball" cannot refer to the same seme "ball", because the 
+   decorations differ. These must be two distinct semes (in this case,
+   two different balls).
+
+
+
+Common-sense Reasoning
+======================
+-- Not implemented, under construction, wide open for experimentation!
+
+-- Starting point: Read in many sentences, e.g. from MIT ConceptNet,
+   which has 800K ++ "common-sense" assertions: "Ice cream is made from milk"
+   Parse them.  Extract semantic triples. Remember them. Answer questions.
+
+-- Use reasoning to answer: "Aristotle is a man. All men are mortal. 
+   Is Aristotle mortal?"
+
+-- Use reasoning for sense-disambiguation: "I heard a bark in the night": 
+   Can one hear "tree bark"? No. So "bark" is probably not "tree bark".
+
+-- Concept formation, refinement:  Today: "What is an instrument?"
+   Answer: "cymbal ukulele scale drum chronometer saxophone"
+   Oh you meant "musical instrument", not "scientific instrument".
+
+   Musical instruments make a sounds, scientific instruments usually
+   do not: "I heard a chronometer in the night".
+
+
+Important things this tutorial did not cover:
+=============================================
+-- Many link-grammar details, including post-grocessing, SAT solver
+-- Framenet-like markup in RelEx
+-- Pronoun/anaphora resolution in RelEx
+-- Word-sense disambiguation in OpenCog.
+
+
+Fun queries:
+============
+what is a tunnel?
+what is an instrument?
+
+
+
+Open Research Questions
+=======================
+
+-- How to extended the hard-coded triples, seme and qeustion-answering
+   code using automated systems, e.g. Markov Logic Nets [USP09].
+
+-- I have a feeling that about 100 or patterns (for the triples
+   and QA code) will take care of the most common, basic expression
+   types, but I don't know.  It would be interesting to quantify.
+
+-- I learned that one must be careful to not over-generalize: e.g.  
+   its easy to mistake a question for a statement, and introduce
+   erroneous "facts".  Its not clear how narrow the rules must be,
+   and still be useful.
+
+-- There are some interesting data representation issues involving
+   adverbs and other modifiers, esp modifiers to the predicate part of 
+   a triples.
+
+-- Its unclear how large, complex sentences fit into the picture.
+
+-- I started some work on basic reasoning, but got distracted.
+   Hand-coding some of these relationships should be fun. 
+   e.g. If Berlin is a capital and capitals are cities then Berlin is
+   a city.  Again, there's a question of how many of such hard-coded
+   deductive rules are needed to handle a "majority" of cases.
+
+References
+==========
+
+[USP09] Hoifung Poon, Pedro Domingos, "Unsupervised Semantic Parsing"
+    Proceedings of the 2009 Conference on Empirical Methods in Natural
+    Language Processing, pages 1–10, Singapore, 6-7 August 2009
+
+

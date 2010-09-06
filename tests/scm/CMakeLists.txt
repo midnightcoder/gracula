@@ -1,0 +1,21 @@
+INCLUDE_DIRECTORIES (
+	${PROJECT_SOURCE_DIR}/src/atomspace
+	${PROJECT_SOURCE_DIR}/src/guile
+	${PROJECT_SOURCE_DIR}/src/util
+)
+
+LINK_DIRECTORIES(
+	${PROJECT_BINARY_DIR}/src/atomspace
+	${PROJECT_BINARY_DIR}/src/guile
+	${PROJECT_BINARY_DIR}/src/util
+)
+
+LINK_LIBRARIES(
+	atomspace
+	server
+	${Boost_SIGNALS_LIBRARY}
+)
+
+ADD_CXXTEST(BasicSCMUTest)
+ADD_CXXTEST(SCMPrimitiveUTest)
+

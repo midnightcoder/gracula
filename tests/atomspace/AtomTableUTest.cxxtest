@@ -1,0 +1,659 @@
+/*
+ * tests/atomspace/AtomTableUTest.cxxtest
+ *
+ * Copyright (C) 2002-2007 Novamente LLC
+ * Copyright (C) 2008 by Singularity Institute for Artificial Intelligence
+ * All Rights Reserved
+ *
+ * Written by Welter Silva <welter@vettalabs.com>
+ *            Gustavo Gama <gama@vettalabs.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License v3 as
+ * published by the Free Software Foundation and including the exceptions
+ * at http://opencog.org/wiki/Licenses
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program; if not, write to:
+ * Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include <iostream>
+#include <fstream>
+
+// We must use the PROJECT_SOURCE_DIR var supplied by the CMake script to
+// ensure we find the file whether or not we're building using a separate build
+// dir
+#define ATOM_TABLE_TEST_XML_FILE PROJECT_SOURCE_DIR"/tests/atomspace/atom_table_utest.xml"
+
+#include <opencog/atomspace/AtomSpaceDefinitions.h>
+#include <opencog/atomspace/AtomSpace.h>
+#include <opencog/atomspace/AtomTable.h>
+#include <opencog/atomspace/ClassServer.h>
+#include <opencog/atomspace/CompositeTruthValue.h>
+#include <opencog/atomspace/HandleEntry.h>
+#include <opencog/atomspace/Link.h>
+#include <opencog/atomspace/Node.h>
+#include <opencog/atomspace/SimpleTruthValue.h>
+#include <opencog/atomspace/TLB.h>
+#include <opencog/util/Config.h>
+#include <opencog/util/Logger.h>
+#include <opencog/util/platform.h>
+#include <opencog/persist/xml/FileXMLBufferReader.h>
+#include <opencog/persist/xml/NMXmlParser.h>
+
+using namespace opencog;
+using namespace std;
+
+const char* gpnNames[] = {"GPN1", "GPN2", "GPN3", "GPN4", "GNP5", "GNP6"};
+int numberOfExpectedMatches[] = {26, 26, 26, 1, 1, 1};
+
+int numberOfExpectedMatchesWithVH1[] = {15, 15, 15, 0, 0, 0};
+int numberOfExpectedMatchesWithVH2[] = {15, 15, 15, 1, 1, 1};
+
+class AtomTableUTest : public CxxTest::TestSuite
+{
+
+private:
+
+    AtomTable* table;
+    AtomSpace* atomSpace;
+    VersionHandle VH1;
+    VersionHandle VH2;
+    int        __testSignalsCounter;
+
+public:
+
+    AtomTableUTest() {}
+    ~AtomTableUTest() {}
+
+    void setUp() {
+        /* load xml files with all necessary nodes and links  */
+        std::vector<XMLBufferReader*> readers(1, new FileXMLBufferReader(ATOM_TABLE_TEST_XML_FILE));
+
+        // XXX FIXME: the FileXMLBufferReader class can throw a "file
+        // not found" exception. Since this exception is not caught,
+        // then we never reach this statement. Thus, table can end up
+        // being a null pointer, and the rest of the test will crash
+        // painfully.
+        atomSpace = new AtomSpace();
+        table = (AtomTable*) & (atomSpace->getAtomTable());
+
+        // Check for existing links because there are 2 identical links in the test xml file
+        HandleEntry* result = NMXmlParser::loadXML(readers, atomSpace, false);
+        delete result;
+        delete readers[0];
+
+	VH1 = VersionHandle(HYPOTHETICAL, atomSpace->addNode(CONCEPT_NODE, "HYPOTHETICAL"));
+	VH2 = VersionHandle(CONTEXTUAL, atomSpace->addNode(CONCEPT_NODE, "CONTEXTUAL"));
+    }
+
+    void tearDown() {
+        delete atomSpace;
+    }
+
+    void testSimple() {
+        AtomTable atomTable(false);
+        Handle word = atomTable.add(new Node(NUMBER_NODE, "1"));
+        Handle sense = atomTable.add(new Node(CONCEPT_NODE, "28675194"));
+        std::vector<Handle> os;
+        os.push_back(word);
+        os.push_back(sense);
+        atomTable.add(new Link(INHERITANCE_LINK, os));
+    }
+
+    void REMOVEDtestPredicateIndices() {
+        /* TODO: REVIEW ALL THIS STUFF */
+        HandleEntry* expectedEntries[6];
+        //logger().debug("building expectedEntries");
+        for (int index = 0; index < 6; index++) {
+            HandleEntry* indexedHandles = table->getPredicateHandleSet(index);
+            //logger().debug("indexedHandles for index = %d => %p", index, indexedHandles);
+            expectedEntries[index] = indexedHandles;
+            //logger().debug("Handles in the index %d: ", index);
+            int matchCount = 0;
+            while (indexedHandles != NULL) {
+                matchCount++;
+                //logger().debug("%p (%d)\t", indexedHandles->handle, TLB::getAtom(indexedHandles->handle)->getType());
+                indexedHandles = indexedHandles->next;
+            }
+            //logger().debug("\ncount = %d, expected count = %d", matchCount, numberOfExpectedMatches[index]);
+            TS_ASSERT(matchCount == numberOfExpectedMatches[index]);
+        }
+        //logger().debug("testPredicateIndices with NULL_VERSION_HANDLE");
+        for (int index = 0; index < 6; index++) {
+            HandleEntry* indexedHandles = table->findHandlesByGPN(gpnNames[index]);
+            //logger().debug("indexedHandles for index = %d => %p", index, indexedHandles);
+            //logger().debug("Handles that matches predicate %s: ", gpnNames[index]);
+            HandleEntry* expectedEntry = expectedEntries[index];
+            while (indexedHandles != NULL) {
+                TS_ASSERT(expectedEntry);
+                TS_ASSERT(expectedEntry->handle == indexedHandles->handle);
+                //logger().debug("%p (%d)\t", indexedHandles->handle, TLB::getAtom(indexedHandles->handle)->getType());
+                indexedHandles = indexedHandles->next;
+                expectedEntry = expectedEntry->next;
+            }
+            TS_ASSERT(!expectedEntry);
+            //logger().debug("");
+        }
+        // test with non-null VersionHandles
+        //logger().debug("adding versioned TVs");
+        for (int index = 0; index < 6; index++) {
+            HandleEntry* expectedEntry = expectedEntries[index];
+            int count = 0;
+            while (expectedEntry != NULL) {
+                if (count < numberOfExpectedMatchesWithVH1[index]) {
+                    //logger().debug("adding versioned tv with VH1");
+                    Atom* atom = TLB::getAtom(expectedEntry->handle);
+                    TruthValue* tv = CompositeTruthValue(TruthValue::NULL_TV(), VH1).merge(atom->getTruthValue());
+                    atom->setTruthValue(*tv);
+                    delete tv;
+                    //logger().debug("resulting tv = %s", atom->getTruthValue()->toString().c_str());
+                }
+                if (numberOfExpectedMatches[index] - count <=  numberOfExpectedMatchesWithVH2[index]) {
+                    //logger().debug("adding versioned tv with VH2");
+                    Atom* atom = TLB::getAtom(expectedEntry->handle);
+                    TruthValue* tv = CompositeTruthValue(TruthValue::NULL_TV(), VH2).merge(atom->getTruthValue());
+                    atom->setTruthValue(*tv);
+                    delete tv;
+                    //logger().debug("resulting tv = %s", atom->getTruthValue()->toString().c_str());
+                }
+                expectedEntry = expectedEntry->next;
+                count++;
+            }
+        }
+        //logger().debug("testPredicateIndices with VH1");
+        for (int index = 0; index < 6; index++) {
+            HandleEntry* indexedHandles = table->findHandlesByGPN(gpnNames[index], VH1);
+            //logger().debug("indexedHandles for index = %d => %p", index, indexedHandles);
+            HandleEntry* expectedEntry = expectedEntries[index];
+            int count = 0;
+            while (indexedHandles != NULL) {
+                TS_ASSERT(expectedEntry);
+                TS_ASSERT(expectedEntry->handle == indexedHandles->handle);
+                //logger().debug("Checking atom with TV = %s", TLB::getAtom(indexedHandles->handle)->getTruthValue().toString().c_str());
+                TS_ASSERT(TLB::getAtom(indexedHandles->handle)->getTruthValue().getType() == COMPOSITE_TRUTH_VALUE);
+                indexedHandles = indexedHandles->next;
+                expectedEntry = expectedEntry->next;
+                count++;
+            }
+            //logger().debug("count before = %d", count);
+            while (count < numberOfExpectedMatches[index]) {
+                TS_ASSERT(expectedEntry);
+                expectedEntry = expectedEntry->next;
+                count++;
+            }
+            //logger().debug("count after = %d", count);
+            TS_ASSERT(!expectedEntry);
+        }
+        //logger().debug("testPredicateIndices with VH2");
+        for (int index = 0; index < 6; index++) {
+            HandleEntry* indexedHandles = table->findHandlesByGPN(gpnNames[index], VH2);
+            //logger().debug("indexedHandles for index = %d => %p", index, indexedHandles);
+            HandleEntry* expectedEntry = expectedEntries[index];
+            int count = 0;
+            while (numberOfExpectedMatches[index] - count > numberOfExpectedMatchesWithVH2[index]) {
+                TS_ASSERT(expectedEntry);
+                expectedEntry = expectedEntry->next;
+                count++;
+            }
+            //logger().debug("count before = %d", count);
+            while (indexedHandles != NULL) {
+                TS_ASSERT(expectedEntry);
+                TS_ASSERT(expectedEntry->handle == indexedHandles->handle);
+                //logger().debug("Checking atom with TV = %s", TLB::getAtom(indexedHandles->handle)->getTruthValue()->toString().c_str());
+                TS_ASSERT(TLB::getAtom(indexedHandles->handle)->getTruthValue().getType() == COMPOSITE_TRUTH_VALUE);
+                indexedHandles = indexedHandles->next;
+                expectedEntry = expectedEntry->next;
+                count++;
+            }
+            //logger().debug("count after = %d", count);
+            TS_ASSERT(!expectedEntry);
+        }
+
+        //logger().debug("testPredicateIndices(): END TEST");fflush(stdout);
+    }
+
+    // Look for atoms in the following structure:
+    //      <ListLink timestamp="630057840">
+    //          <Element class="CWPixelPerceptNode" name="00065349"/>
+    //          <Element class="NumberNode" name="on"/>
+    //      </ListLink>
+    void testGetHandleSet() {
+        //== getHandleSet(const char**, Type*, bool*, Arity, Type = ATOM, bool = true) ==/
+        const char* names1[] = {"00065349", "12"};
+        Type types1[] = {CONCEPT_NODE, NUMBER_NODE};
+        HandleEntry* result = table->getHandleSet(names1, types1, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result != NULL);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete (result);
+
+        const char* names2[] = {"12", "00065349"};
+        Type types2[] = {NUMBER_NODE, CONCEPT_NODE};
+        result = table->getHandleSet(names2, types2, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result == NULL);
+
+        const char* names3[] = {NULL, "12"};
+        Type types3[] = {NOTYPE, NUMBER_NODE};
+        result = table->getHandleSet(names3, types3, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result != NULL);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        const char* names4[] = {NULL, "00065349"};
+        Type types4[] = {NOTYPE, CONCEPT_NODE};
+        result = table->getHandleSet(names4, types4, NULL, 2, LIST_LINK, false);
+        //if (result != NULL) logger().debug("result = %s", result->toString().c_str());
+        TS_ASSERT(result == NULL);
+
+        result = table->getHandleSet((const char**) NULL, types1, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result != NULL);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        result = table->getHandleSet((const char**) NULL, types2, NULL, 2, LIST_LINK, false);
+        //if (result != NULL) logger().debug("result = %s", result->toString().c_str());
+        TS_ASSERT(result == NULL);
+
+        TS_ASSERT_THROWS(table->getHandleSet(names1, NULL, NULL, 2, LIST_LINK, false), RuntimeException&);
+        TS_ASSERT_THROWS(table->getHandleSet(names2, NULL, NULL, 2, LIST_LINK, false), RuntimeException&);
+        TS_ASSERT_THROWS(table->getHandleSet(names3, NULL, NULL, 2, LIST_LINK, false), RuntimeException&);
+        TS_ASSERT_THROWS(table->getHandleSet(names4, NULL, NULL, 2, LIST_LINK, false), RuntimeException&);
+
+        //== getHandleSet(Handle*, Type*, bool*, Arity, Type = ATOM, bool = true) ==/
+        std::vector<Handle> handles1(2);
+        handles1[0] = table->getHandle("00065349", CONCEPT_NODE);
+        handles1[1] = table->getHandle("12", NUMBER_NODE);
+        result = table->getHandleSet(handles1, types1, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        std::vector<Handle> handles2(2);
+        handles2[0] = table->getHandle("12", NUMBER_NODE);
+        handles2[1] = table->getHandle("00065349", CONCEPT_NODE);
+        result = table->getHandleSet(handles2, types2, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(!result);
+        //logger().debug("result = %s", result->toString().c_str());
+
+        std::vector<Handle> handles3(2);
+        handles3[0] = Handle::UNDEFINED;
+        handles3[1] = table->getHandle("12", NUMBER_NODE);
+        result = table->getHandleSet(handles3, types3, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        std::vector<Handle> handles4(2);
+        handles4[0] = table->getHandle("12", NUMBER_NODE);
+        handles4[1] = Handle::UNDEFINED;
+        result = table->getHandleSet(handles4, types4, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(!result);
+        //logger().debug("result = %s", result->toString().c_str());
+
+        result = table->getHandleSet(std::vector<Handle>(), types1, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        result = table->getHandleSet(std::vector<Handle>(), types2, NULL, 2, LIST_LINK, false);
+        //if (result != NULL) logger().debug("result = %s", result->toString().c_str());
+        TS_ASSERT(!result);
+
+        result = table->getHandleSet(handles1, NULL , NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        result = table->getHandleSet(handles2, NULL, NULL, 2, LIST_LINK, false);
+        //if (result != NULL) logger().debug("result = %s", result->toString().c_str());
+        TS_ASSERT(!result);
+
+        result = table->getHandleSet(handles3, NULL , NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        result = table->getHandleSet(handles4, NULL, NULL, 2, LIST_LINK, false);
+        //if (result != NULL) logger().debug("result = %s", result->toString().c_str());
+        TS_ASSERT(!result);
+
+        //== getHandleSet(Type*, bool*, Arity, Type = ATOM, bool = true) ==/
+
+        result = table->getHandleSet(types1, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        result = table->getHandleSet(types2, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(!result);
+
+        result = table->getHandleSet(types3, NULL, 2, LIST_LINK, false);
+        TS_ASSERT(result);
+        //logger().debug("result = %s", result->toString().c_str());
+        delete(result);
+
+        result = table->getHandleSet(types4, NULL, 2, LIST_LINK, false);
+        //if (result != NULL) logger().debug("result = %s", result->toString().c_str());
+        TS_ASSERT(!result);
+    }
+
+    void testGetHandleSet_bugfix1() {
+        HandleSeq emptyOutgoing;
+        HandleEntry* result = table->getHandleSet(emptyOutgoing, NULL, NULL, emptyOutgoing.size(), LIST_LINK, false);
+        TS_ASSERT(!result);
+        result = table->getHandleSet(emptyOutgoing, NULL, NULL, emptyOutgoing.size(), LIST_LINK, true);
+        TS_ASSERT(!result);
+        Link* link = new Link(LIST_LINK, emptyOutgoing);
+        Handle h = table->add(link);
+        if (TLB::getHandle(link) != h) delete link;
+        result = table->getHandleSet(emptyOutgoing, NULL, NULL, emptyOutgoing.size(), LIST_LINK, false);
+        TS_ASSERT(result);
+        delete result;
+        result = table->getHandleSet(emptyOutgoing, NULL, NULL, emptyOutgoing.size(), LIST_LINK, true);
+        TS_ASSERT(result);
+        delete result;
+    }
+
+    void testPrint() {
+        const char *filename = PROJECT_BINARY_DIR"/tests/atomspace/AtomTableUTest.log";
+        std::ofstream out(filename);
+
+        out << "All Atoms:" << endl;
+        table->print(out);
+        out << "All Nodes:" << endl;
+        table->print(out, NODE);
+        out << "All ConceptNodes:" << endl;
+        table->print(out, CONCEPT_NODE, false);
+        out << "All Links:" << endl;
+        table->print(out, LINK);
+        out << "All ListLinks:" << endl;
+        table->print(out, LIST_LINK, false);
+
+        out.close();
+
+        if (!CxxTest::TestTracker::tracker().testFailed())
+            std::remove(filename);
+    }
+
+    void testImportanceUpdate() {
+        AtomTable atomTable;
+
+        /* add a simple set of links & nodes */
+        Node* wordNode = new Node(NUMBER_NODE, "1");
+        wordNode->setAttentionValue(*AttentionValue::factory((AttentionValue::sti_t) - 10));
+        Handle wnHandle = atomTable.add(wordNode);
+
+        Node* senseNode = new Node(CONCEPT_NODE, "28675194");
+        senseNode->setAttentionValue(*AttentionValue::factory((AttentionValue::sti_t) 30));
+        Handle snHandle = atomTable.add(senseNode);
+
+        std::vector<Handle> os;
+        os.push_back(wnHandle);
+        os.push_back(snHandle);
+        Link* inheritanceLink = new Link(INHERITANCE_LINK, os);
+        inheritanceLink->setAttentionValue(*AttentionValue::factory((AttentionValue::sti_t) 500));
+        Handle linkHandle = atomTable.add(inheritanceLink);
+
+        // force sti decaying
+        for (int i = 0; i < 10; i++)
+            atomTable.decayShortTermImportance();
+
+        // test the updated STIs
+        TS_ASSERT(TLB::getAtom(wnHandle)->getAttentionValue().getSTI()   == -20);
+        TS_ASSERT(TLB::getAtom(snHandle)->getAttentionValue().getSTI()   ==  20);
+        TS_ASSERT(TLB::getAtom(linkHandle)->getAttentionValue().getSTI() == 490);
+    }
+
+    void atomAdded1(Handle h) {
+        TS_ASSERT(table->getSize() == 1);
+        logger().debug("atomAdded1: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter += 1;
+    }
+
+    void atomAdded2(Handle h) {
+        TS_ASSERT(table->getSize() == 1);
+        logger().debug("atomAdded2: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter += 10;
+    }
+
+    void atomMerged1(Handle h) {
+        TS_ASSERT(table->getSize() == 1);
+        logger().debug("atomMerged1: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter += 100;
+    }
+
+    void atomMerged2(Handle h) {
+        TS_ASSERT(table->getSize() == 1);
+        logger().debug("atomMerged2: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter += 1000;
+    }
+
+    void atomRemoved1(Handle h) {
+        TS_ASSERT(table->getSize() == 0);
+        logger().debug("atomRemoved1: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter += 10000;
+    }
+
+    void atomRemoved2(Handle h) {
+        TS_ASSERT(table->getSize() == 0);
+        logger().debug("atomRemoved2: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter += 100000;
+    }
+
+    void testSignals() {
+        AtomTable atomTable;
+        table = &atomTable; // save pointer in class member
+
+        // connect signals
+        boost::signals::connection add1 =
+            atomTable.addAtomSignal().connect(boost::bind(&AtomTableUTest::atomAdded1, this, _1));
+        boost::signals::connection add2 =
+            atomTable.addAtomSignal().connect(boost::bind(&AtomTableUTest::atomAdded2, this, _1));
+        boost::signals::connection merge1 =
+            atomTable.mergeAtomSignal().connect(boost::bind(&AtomTableUTest::atomMerged1, this, _1));
+        boost::signals::connection merge2 =
+            atomTable.mergeAtomSignal().connect(boost::bind(&AtomTableUTest::atomMerged2, this, _1));
+        boost::signals::connection remove1 =
+            atomTable.removeAtomSignal().connect(boost::bind(&AtomTableUTest::atomRemoved1, this, _1));
+        boost::signals::connection remove2 =
+            atomTable.removeAtomSignal().connect(boost::bind(&AtomTableUTest::atomRemoved2, this, _1));
+
+        /* add and remove a simple node */
+        __testSignalsCounter = 0;
+        logger().debug("before first atom add");
+        Handle wnHandle = atomTable.add(new Node(NUMBER_NODE, "1"));
+        TS_ASSERT(__testSignalsCounter == 11);
+        logger().debug("before second atom add");
+        atomTable.add(new Node(NUMBER_NODE, "1"));
+        TS_ASSERT(__testSignalsCounter == 1111);
+        logger().debug("before atom remove");
+        atomTable.remove(wnHandle);
+        TS_ASSERT(__testSignalsCounter == 111111);
+
+        /* add a simple node and let decayShortTermImportance remove it */
+        __testSignalsCounter = 0;
+        Node *node = new Node(NUMBER_NODE, "1");
+        wnHandle = atomTable.add(node);
+        TS_ASSERT(__testSignalsCounter == 11);
+        node->setAttentionValue(AttentionValue(config().get_int("MIN_STI") + 10,
+                                node->getAttentionValue().getLTI(),
+                                node->getAttentionValue().getVLTI()));
+        for (unsigned int i = 0; i <= 10; ++i)
+            atomTable.decayShortTermImportance();
+        TS_ASSERT(__testSignalsCounter == 110011);
+
+        /* add a node with LTI == 1 so that decayShortTermImportance cannot remove it */
+        __testSignalsCounter = 0;
+        Node *ltiNode = new Node(NUMBER_NODE, "1");
+        wnHandle = atomTable.add(ltiNode);
+        TS_ASSERT(__testSignalsCounter == 11);
+        ltiNode->setAttentionValue(AttentionValue(config().get_int("MIN_STI") + 10,
+                                1, 
+                                ltiNode->getAttentionValue().getVLTI()));
+        for (unsigned int i = 0; i <= 10; ++i) {
+            std::cout << ltiNode->getAttentionValue().toString() << std::endl;
+            atomTable.decayShortTermImportance();
+        }
+        TS_ASSERT(__testSignalsCounter == 11);
+	atomTable.remove(wnHandle);
+        TS_ASSERT(__testSignalsCounter == 110011);
+
+        // test disconnections
+        __testSignalsCounter = 0;
+        add1.disconnect();
+        merge1.disconnect();
+        remove1.disconnect();
+        wnHandle = atomTable.add(new Node(NUMBER_NODE, "1"));
+        atomTable.add(new Node(NUMBER_NODE, "1"));
+        TS_ASSERT(__testSignalsCounter == 1010);
+        atomTable.remove(wnHandle);
+        TS_ASSERT(__testSignalsCounter == 101010);
+
+        __testSignalsCounter = 0;
+        add2.disconnect();
+        merge2.disconnect();
+        remove2.disconnect();
+        wnHandle = atomTable.add(new Node(NUMBER_NODE, "1"));
+        atomTable.add(new Node(NUMBER_NODE, "1"));
+        TS_ASSERT(__testSignalsCounter == 0);
+        atomTable.remove(wnHandle);
+        TS_ASSERT(__testSignalsCounter == 0);
+    }
+
+    void atomAdded3(Handle h) {
+        logger().debug("atomAdded3: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter += 1;
+    }
+
+    void atomRemoved3(Handle h) {
+        logger().debug("atomRemoved3: %s", TLB::getAtom(h)->toShortString().c_str());
+        __testSignalsCounter -= 1;
+    }
+
+    void testRemovalByDecay() {
+        AtomTable atomTable;
+        AttentionValue::sti_t min_sti = opencog::config().get_int("MIN_STI");
+
+        // connect signals and reset counter
+        atomTable.addAtomSignal().connect(boost::bind(&AtomTableUTest::atomAdded3, this, _1));
+        atomTable.removeAtomSignal().connect(boost::bind(&AtomTableUTest::atomRemoved3, this, _1));
+        __testSignalsCounter = 0;
+
+        /* add a simple tree of links & nodes */
+        Node* wordNode = new Node(NUMBER_NODE, "1");
+        wordNode->setAttentionValue(*AttentionValue::factory((AttentionValue::sti_t) (min_sti + 7)));
+        Handle wnHandle = atomTable.add(wordNode);
+
+        Node* senseNode = new Node(CONCEPT_NODE, "28675194");
+        senseNode->setAttentionValue(*AttentionValue::factory((AttentionValue::sti_t) (min_sti + 5)));
+        Handle snHandle = atomTable.add(senseNode);
+
+        std::vector<Handle> os;
+        os.push_back(wnHandle);
+        os.push_back(snHandle);
+        Link* inheritanceLink = new Link(INHERITANCE_LINK, os);
+        inheritanceLink->setAttentionValue(*AttentionValue::factory((AttentionValue::sti_t) (min_sti + 6)));
+        atomTable.add(inheritanceLink);
+
+        Link* listLink = new Link(LIST_LINK, os);
+        listLink->setAttentionValue(*AttentionValue::factory((AttentionValue::sti_t) (min_sti + 5)));
+        atomTable.add(listLink);
+
+        // test we added 4 atoms
+        TS_ASSERT(__testSignalsCounter == 4);
+
+        // decay sti up to the threshold where the least important atoms
+        // should be about to be removed
+        for (int i = 0; i < 5; i++) atomTable.decayShortTermImportance();
+        // and test the existance of each atom
+        TS_ASSERT(atomTable.getHandleSet((Type) NUMBER_NODE)      != NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) CONCEPT_NODE)     != NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) INHERITANCE_LINK) != NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) LIST_LINK)        != NULL);
+        TS_ASSERT(__testSignalsCounter == 4); // no atoms removed yet
+
+        // run another decaying cycle; the list link node should have been
+        // removed
+        atomTable.decayShortTermImportance();
+        TS_ASSERT(atomTable.getHandleSet((Type) NUMBER_NODE)      != NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) CONCEPT_NODE)     != NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) INHERITANCE_LINK) != NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) LIST_LINK)        == NULL);
+        TS_ASSERT(__testSignalsCounter == 3); // 1 atom removed
+
+        // an another one; the inheritance link and the sense node should have
+        // been removed
+        atomTable.decayShortTermImportance();
+        TS_ASSERT(atomTable.getHandleSet((Type) NUMBER_NODE)      != NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) CONCEPT_NODE)     == NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) INHERITANCE_LINK) == NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) LIST_LINK)        == NULL);
+        TS_ASSERT(__testSignalsCounter == 1); // 2 more atoms removed
+
+        // and another, final one; by now all nodes should have been removed
+        atomTable.decayShortTermImportance();
+        TS_ASSERT(atomTable.getHandleSet((Type) NUMBER_NODE)      == NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) CONCEPT_NODE)     == NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) INHERITANCE_LINK) == NULL);
+        TS_ASSERT(atomTable.getHandleSet((Type) LIST_LINK)        == NULL);
+        TS_ASSERT(__testSignalsCounter == 0); // last one removed
+    }
+
+    /* test the fix for the bug triggered whenever we had a link pointing to the
+     * same atom twice (or more) */
+    void testDoubleLink() {
+        AtomTable atomTable;
+        Node* n1 = new Node(NUMBER_NODE, "1");
+        Node* n2 = new Node(NUMBER_NODE, "2");
+        Handle hn1 = atomTable.add(n1);
+        Handle hn2 = atomTable.add(n2);
+
+        std::vector<Handle> os; os.push_back(hn1); os.push_back(hn1); os.push_back(hn2);
+        Link* l1 = new Link(LIST_LINK, os);
+        Handle hl1 = atomTable.add(l1);
+
+        atomTable.remove(hn1, true);
+    }
+
+    void testMerge() {
+        AtomTable atomTable;
+
+        Node* n1 = new Node(NUMBER_NODE, "1", SimpleTruthValue(0.1f, 0.2f));
+        Handle hn1 = atomTable.add(n1);
+
+        Node* n2 = new Node(NUMBER_NODE, "1", SimpleTruthValue(0.3f, 0.4f));
+        TS_ASSERT_THROWS_NOTHING(atomTable.add(n2));
+
+        Node* n3 = new Node(NUMBER_NODE, "1", SimpleTruthValue(0.8f, 0.3f));
+        TS_ASSERT_THROWS_NOTHING(atomTable.add(n3));
+
+        Handle h = atomTable.getHandle("1", NUMBER_NODE);
+        TS_ASSERT(h == hn1);
+        TS_ASSERT_DELTA(TLB::getAtom(h)->getTruthValue().getMean(), 0.3f, 0.000001);
+        TS_ASSERT_DELTA(TLB::getAtom(h)->getTruthValue().getCount(), 0.4f, 0.000001);
+    }
+
+    void testSimpleWithCustomAtomTypes() {
+        AtomTable atomTable(false);
+        Type MY_NUMBER_NODE = classserver().addType(NUMBER_NODE, "MyNumberNode");
+        Type MY_CONCEPT_NODE = classserver().addType(CONCEPT_NODE, "MyConceptNode");
+        Type MY_INHERITANCE_LINK = classserver().addType(INHERITANCE_LINK, "MyInheritanceLink");
+        printf("MY_NUMBER_NODE = %u, MY_CONCEPT_NODE = %u, MY_INHERITANCE_LINK = %u\n", MY_NUMBER_NODE, MY_CONCEPT_NODE, MY_INHERITANCE_LINK);
+        Handle word = atomTable.add(new Node(MY_NUMBER_NODE, "1"));
+        Handle sense = atomTable.add(new Node(MY_CONCEPT_NODE, "28675194"));
+        std::vector<Handle> os;
+        os.push_back(word);
+        os.push_back(sense);
+        atomTable.add(new Link(MY_INHERITANCE_LINK, os));
+        TS_ASSERT(atomTable.getHandle("1", MY_NUMBER_NODE) != Handle::UNDEFINED);
+        TS_ASSERT(atomTable.getHandle("28675194", MY_CONCEPT_NODE) != Handle::UNDEFINED);
+        TS_ASSERT(atomTable.getHandle(MY_INHERITANCE_LINK, os) != Handle::UNDEFINED);
+    }
+};

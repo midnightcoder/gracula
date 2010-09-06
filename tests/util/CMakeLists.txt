@@ -1,0 +1,17 @@
+INCLUDE_DIRECTORIES(
+	${PROJECT_SOURCE_DIR}/src/util
+)
+
+LINK_DIRECTORIES(
+	${PROJECT_BINARY_DIR}
+	${PROJECT_BINARY_DIR}/src/util
+)
+
+LINK_LIBRARIES(util)
+
+ADD_CXXTEST(ConfigUTest)
+ADD_CXXTEST(LoggerUTest)
+ADD_CXXTEST(StringTokenizerUTest)
+ADD_CXXTEST(lazy_selectorUTest)
+ADD_CXXTEST(iostreamContainerUTest)
+ADD_CXXTEST(numericUTest)

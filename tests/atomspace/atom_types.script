@@ -1,0 +1,16 @@
+// =====================================================================
+// Custom atom types for test purposes only.
+// =====================================================================
+ATOM
+NODE
+LINK
+
+// =====================================================================
+// The following types are needed by BasicSCMUTest 
+// =====================================================================
+SENTENCE_NODE <- NODE
+DOCUMENT_NODE <- NODE
+WORD_NODE <- NODE
+LEMMA_NODE <- NODE
+PART_OF_SPEECH_NODE <- NODE
+

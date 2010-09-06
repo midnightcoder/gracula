@@ -1,0 +1,13 @@
+ADD_LIBRARY (dotty SHARED
+	DottyModule.cc 
+)
+
+ADD_DEPENDENCIES(dotty opencog_atom_types)
+
+INCLUDE_DIRECTORIES (
+	${ODBC_INCLUDE_DIRS}
+)
+
+INSTALL (TARGETS dotty
+	LIBRARY DESTINATION "lib${LIB_DIR_SUFFIX}/opencog"
+)

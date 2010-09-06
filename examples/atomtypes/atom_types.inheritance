@@ -1,0 +1,4 @@
+/* File automatically generated. Do not edit */
+opencog::FOO_NODE = opencog::classserver().addType(opencog::NODE, "FooNode");
+opencog::BAR_NODE = opencog::classserver().addType(opencog::NUMBER_NODE, "BarNode");
+opencog::FOOBAR_LINK = opencog::classserver().addType(opencog::UNORDERED_LINK , "FoooooobarLink");
